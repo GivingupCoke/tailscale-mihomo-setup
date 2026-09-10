@@ -1,0 +1,4 @@
+interface:
+  display_name: "Tailscale + Mihomo Setup"
+  short_description: "Deploy user-space Tailscale and rule-based Mihomo proxying"
+  default_prompt: "Use $tailscale-mihomo-setup to deploy and verify user-space Tailscale with Mihomo routing on this server."

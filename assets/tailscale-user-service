@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+runtime_dir="$HOME/.local/state/tailscale"
+tailscale_bin="$HOME/.local/bin/tailscale"
+tailscaled_bin="$HOME/.local/bin/tailscaled"
+socket_path="$runtime_dir/tailscaled.sock"
+session_name="tailscaled"
+
+start() {
+  mkdir -p "$runtime_dir"
+  chmod 700 "$runtime_dir"
+  if "$tailscale_bin" --socket="$socket_path" status >/dev/null 2>&1; then
+    echo "tailscaled is already running"
+    return
+  fi
+  screen -dmS "$session_name" env \
+    -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy \
+    "$tailscaled_bin" --tun=userspace-networking \
+    --state="$runtime_dir/tailscaled.state" --socket="$socket_path" --port=0
+  for _ in $(seq 1 50); do
+    if "$tailscale_bin" --socket="$socket_path" status >/dev/null 2>&1; then
+      echo "tailscaled started"
+      return
+    fi
+    sleep 0.2
+  done
+  echo "tailscaled failed to start" >&2
+  return 1
+}
+
+case "${1:-status}" in
+  start) start ;;
+  stop) screen -S "$session_name" -X quit ;;
+  restart) screen -S "$session_name" -X quit >/dev/null 2>&1 || true; start ;;
+  status) "$tailscale_bin" --socket="$socket_path" status ;;
+  *) echo "Usage: $0 {start|stop|restart|status}" >&2; exit 2 ;;
+esac

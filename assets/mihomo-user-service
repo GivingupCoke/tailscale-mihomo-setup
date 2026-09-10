@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+runtime_dir="$HOME/.local/state/mihomo"
+config_dir="$HOME/.config/mihomo"
+config_file="$config_dir/config.yaml"
+mihomo_bin="$HOME/.local/bin/mihomo"
+log_file="$runtime_dir/mihomo.log"
+session_name="mihomo-user"
+
+is_running() { screen -list 2>/dev/null | grep -q "[.]${session_name}[[:space:]]"; }
+test_config() {
+  test -r "$config_file" || { echo "Missing $config_file" >&2; return 1; }
+  "$mihomo_bin" -t -d "$config_dir" -f "$config_file"
+}
+start() {
+  mkdir -p "$runtime_dir"
+  chmod 700 "$runtime_dir"
+  if is_running; then echo "mihomo is already running"; return; fi
+  test_config
+  : > "$log_file"
+  screen -L -Logfile "$log_file" -dmS "$session_name" env \
+    -u HTTP_PROXY -u HTTPS_PROXY -u ALL_PROXY -u http_proxy -u https_proxy -u all_proxy \
+    "$mihomo_bin" -d "$config_dir" -f "$config_file"
+  for _ in $(seq 1 50); do
+    if ! is_running; then echo "mihomo failed to start; see $log_file" >&2; return 1; fi
+    if ss -lnt 2>/dev/null | grep -q '127\.0\.0\.1:7890'; then echo "mihomo started"; return; fi
+    sleep 0.2
+  done
+  echo "mihomo started but 127.0.0.1:7890 is not listening; see $log_file" >&2
+  return 1
+}
+stop() {
+  if ! is_running; then echo "mihomo is not running"; return; fi
+  screen -S "$session_name" -X quit
+  for _ in $(seq 1 50); do
+    if ! is_running; then echo "mihomo stopped"; return; fi
+    sleep 0.1
+  done
+  echo "mihomo did not stop cleanly" >&2
+  return 1
+}
+status() {
+  if is_running; then
+    echo "mihomo is running"
+    ss -lntp 2>/dev/null | grep '127\.0\.0\.1:7890' || true
+  else
+    echo "mihomo is not running"
+    return 1
+  fi
+}
+
+case "${1:-status}" in
+  test) test_config ;;
+  start) start ;;
+  stop) stop ;;
+  restart) stop || true; start ;;
+  status) status ;;
+  log) tail -n 100 "$log_file" ;;
+  *) echo "Usage: $0 {test|start|stop|restart|status|log}" >&2; exit 2 ;;
+esac
