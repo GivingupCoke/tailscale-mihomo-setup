@@ -121,3 +121,7 @@ For a configured target server:
 scripts/verify.sh
 scripts/verify.sh --codex
 ```
+
+## License
+
+This project is released under the [MIT License](LICENSE).
